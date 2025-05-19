@@ -46,9 +46,12 @@ struct camera_ray_result {
 void camera_ray_pick(struct world* w, float gx0, float gy0, float gz0,
 					 float gx1, float gy1, float gz1,
 					 struct camera_ray_result* res);
-void camera_physics(struct camera* c, float dt);
+
+// Modified: add player_id argument for multiplayer support
+void camera_physics(struct camera* c, float dt, int player_id);
 void camera_update(struct camera* c, bool in_water);
+// Modified: add player_id argument for multiplayer support
 void camera_attach(struct camera* c, struct entity* e, float tick_delta,
-				   float dt);
+				   float dt, int player_id);
 
 #endif

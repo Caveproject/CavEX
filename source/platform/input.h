@@ -22,6 +22,18 @@
 
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define MAX_PLAYERS 2
+
+typedef struct {
+    float x;
+    float y;
+} Vec2;
+
+// Input buttons enumeration
 enum input_button {
 	IB_FORWARD,
 	IB_BACKWARD,
@@ -42,6 +54,7 @@ enum input_button {
 	IB_GUI_CLICK,
 	IB_GUI_CLICK_ALT,
 	IB_SCREENSHOT,
+	IB_TOTAL_KEYS  // Total number of buttons (for iteration)
 };
 
 enum input_category {
@@ -51,16 +64,23 @@ enum input_category {
 	INPUT_CAT_NONE,
 };
 
+// Initialize the input system
 void input_init(void);
-void input_poll(void);
 
-bool input_symbol(enum input_button b, int* symbol, int* symbol_help,
-				  enum input_category* category);
-bool input_pressed(enum input_button b);
-bool input_released(enum input_button b);
-bool input_held(enum input_button b);
-bool input_joystick(float dt, float* x, float* y);
-void input_pointer_enable(bool enable);
-bool input_pointer(float* x, float* y, float* angle);
+// Poll and update input states; call once per frame
+void updateInput(void);
 
+// Query input states per player (0-based player index)
+bool isKeyDown(int player, int key);
+bool isKeyPressed(int player, int key);
+bool isKeyReleased(int player, int key);
+
+// Get analog stick values per player
+Vec2 getLeftStick(int player);
+Vec2 getRightStick(int player);
+
+#ifdef __cplusplus
+}
 #endif
+
+#endif // INPUT_H

@@ -1,20 +1,20 @@
 /*
-	Copyright (c) 2023 ByteBit/xtreme8000
+    Copyright (c) 2023 ByteBit/xtreme8000
 
-	This file is part of CavEX.
+    This file is part of CavEX.
 
-	CavEX is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 3 of the License, or
-	(at your option) any later version.
+    CavEX is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
 
-	CavEX is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
+    CavEX is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
 
-	You should have received a copy of the GNU General Public License
-	along with CavEX.  If not, see <http://www.gnu.org/licenses/>.
+    You should have received a copy of the GNU General Public License
+    along with CavEX.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include "../block/blocks_data.h"
@@ -23,219 +23,257 @@
 
 #define EYE_HEIGHT 1.62F
 
+// Add player ID enum to distinguish player 1 and player 2
+typedef enum {
+    PLAYER_ONE,
+    PLAYER_TWO,
+} player_id_t;
+
+// You must add this field in your entity struct somewhere, for example in local_player struct:
+// struct local_player_data {
+//     bool capture_input;
+//     int jump_ticks;
+//     player_id_t player_id;
+//     ...
+// };
+
+// Helper function: Query input per player
+static bool input_held_for_player(player_id_t pid, input_button_t btn) {
+#ifdef PLATFORM_WII
+    // Example: map player id to controller index for Wii
+    int controller_idx = (pid == PLAYER_ONE) ? 0 : 1;
+    return wpad_button_held(controller_idx, btn);
+#else
+    // PC example (you must implement your own mapping):
+    // Player 1 uses WASD keys, player 2 uses arrow keys
+    if (pid == PLAYER_ONE) {
+        // You have to implement input_held_wasd to map btn to WASD keys
+        return input_held_wasd(btn);
+    } else {
+        // input_held_arrow_keys maps btn to arrow keys for player 2
+        return input_held_arrow_keys(btn);
+    }
+#endif
+}
+
 static void liquid_aabb(struct AABB* out, struct block_info* blk_info) {
-	int block_height = (blk_info->block->metadata & 0x8) ?
-		16 :
-		(8 - blk_info->block->metadata) * 2 * 7 / 8;
-	aabb_setsize(out, 1.0F, (float)block_height / 16.0F, 1.0F);
-	aabb_translate(out, blk_info->x, blk_info->y, blk_info->z);
+    int block_height = (blk_info->block->metadata & 0x8) ?
+        16 :
+        (8 - blk_info->block->metadata) * 2 * 7 / 8;
+    aabb_setsize(out, 1.0F, (float)block_height / 16.0F, 1.0F);
+    aabb_translate(out, blk_info->x, blk_info->y, blk_info->z);
 }
 
 static bool test_in_lava(struct AABB* entity, struct block_info* blk_info) {
-	if(blk_info->block->type != BLOCK_LAVA_FLOW
-	   && blk_info->block->type != BLOCK_LAVA_STILL)
-		return false;
+    if(blk_info->block->type != BLOCK_LAVA_FLOW
+       && blk_info->block->type != BLOCK_LAVA_STILL)
+        return false;
 
-	struct AABB bbox;
-	liquid_aabb(&bbox, blk_info);
-	return aabb_intersection(entity, &bbox);
+    struct AABB bbox;
+    liquid_aabb(&bbox, blk_info);
+    return aabb_intersection(entity, &bbox);
 }
 
 static bool test_in_water(struct AABB* entity, struct block_info* blk_info) {
-	if(blk_info->block->type != BLOCK_WATER_FLOW
-	   && blk_info->block->type != BLOCK_WATER_STILL)
-		return false;
+    if(blk_info->block->type != BLOCK_WATER_FLOW
+       && blk_info->block->type != BLOCK_WATER_STILL)
+        return false;
 
-	struct AABB bbox;
-	liquid_aabb(&bbox, blk_info);
-	return aabb_intersection(entity, &bbox);
+    struct AABB bbox;
+    liquid_aabb(&bbox, blk_info);
+    return aabb_intersection(entity, &bbox);
 }
 
 static bool test_in_liquid(struct AABB* entity, struct block_info* blk_info) {
-	return test_in_water(entity, blk_info) || test_in_lava(entity, blk_info);
+    return test_in_water(entity, blk_info) || test_in_lava(entity, blk_info);
 }
 
 static bool entity_tick(struct entity* e) {
-	assert(e);
+    assert(e);
 
-	glm_vec3_copy(e->pos, e->pos_old);
-	glm_vec2_copy(e->orient, e->orient_old);
+    glm_vec3_copy(e->pos, e->pos_old);
+    glm_vec2_copy(e->orient, e->orient_old);
 
-	for(int k = 0; k < 3; k++)
-		if(fabsf(e->vel[k]) < 0.005F)
-			e->vel[k] = 0.0F;
+    for(int k = 0; k < 3; k++)
+        if(fabsf(e->vel[k]) < 0.005F)
+            e->vel[k] = 0.0F;
 
-	struct AABB bbox;
-	aabb_setsize_centered(&bbox, 0.6F, 1.0F, 0.6F);
-	aabb_translate(&bbox, e->pos[0], e->pos[1] + 1.8F / 2.0F - EYE_HEIGHT,
-				   e->pos[2]);
+    struct AABB bbox;
+    aabb_setsize_centered(&bbox, 0.6F, 1.0F, 0.6F);
+    aabb_translate(&bbox, e->pos[0], e->pos[1] + 1.8F / 2.0F - EYE_HEIGHT,
+                   e->pos[2]);
 
-	bool in_water = entity_intersection(e, &bbox, test_in_water);
-	bool in_lava = entity_intersection(e, &bbox, test_in_lava);
+    bool in_water = entity_intersection(e, &bbox, test_in_water);
+    bool in_lava = entity_intersection(e, &bbox, test_in_lava);
 
-	float slipperiness
-		= (in_lava || in_water) ? 1.0F : (e->on_ground ? 0.6F : 1.0F);
+    float slipperiness
+        = (in_lava || in_water) ? 1.0F : (e->on_ground ? 0.6F : 1.0F);
 
-	int forward = 0;
-	int strafe = 0;
-	bool jumping = false;
+    int forward = 0;
+    int strafe = 0;
+    bool jumping = false;
 
-	if(e->data.local_player.capture_input) {
-		if(input_held(IB_FORWARD))
-			forward++;
+    if(e->data.local_player.capture_input) {
+        player_id_t pid = e->data.local_player.player_id;
 
-		if(input_held(IB_BACKWARD))
-			forward--;
+        if(input_held_for_player(pid, IB_FORWARD))
+            forward++;
 
-		if(input_held(IB_RIGHT))
-			strafe++;
+        if(input_held_for_player(pid, IB_BACKWARD))
+            forward--;
 
-		if(input_held(IB_LEFT))
-			strafe--;
+        if(input_held_for_player(pid, IB_RIGHT))
+            strafe++;
 
-		jumping = input_held(IB_JUMP);
-	}
+        if(input_held_for_player(pid, IB_LEFT))
+            strafe--;
 
-	int dist = forward * forward + strafe * strafe;
+        jumping = input_held_for_player(pid, IB_JUMP);
+    }
 
-	if(dist > 0) {
-		float distf = fmaxf(sqrtf(dist), 1.0F);
-		float dx = (forward * sinf(e->orient[0]) - strafe * cosf(e->orient[0]))
-			/ distf;
-		float dy = (strafe * sinf(e->orient[0]) + forward * cosf(e->orient[0]))
-			/ distf;
+    int dist = forward * forward + strafe * strafe;
 
-		e->vel[0] += 0.1F * powf(0.6F / slipperiness, 3.0F) * dx;
-		e->vel[2] += 0.1F * powf(0.6F / slipperiness, 3.0F) * dy;
-	}
+    if(dist > 0) {
+        float distf = fmaxf(sqrtf(dist), 1.0F);
+        float dx = (forward * sinf(e->orient[0]) - strafe * cosf(e->orient[0]))
+            / distf;
+        float dy = (strafe * sinf(e->orient[0]) + forward * cosf(e->orient[0]))
+            / distf;
 
-	if(e->data.local_player.jump_ticks > 0)
-		e->data.local_player.jump_ticks--;
+        e->vel[0] += 0.1F * powf(0.6F / slipperiness, 3.0F) * dx;
+        e->vel[2] += 0.1F * powf(0.6F / slipperiness, 3.0F) * dy;
+    }
 
-	if(jumping) {
-		if(in_water || in_lava) {
-			e->vel[1] += 0.04F;
-		} else if(e->on_ground && e->data.local_player.jump_ticks == 0) {
-			e->vel[1] = 0.42F;
-			e->data.local_player.jump_ticks = 10;
-		}
-	} else {
-		e->data.local_player.jump_ticks = 0;
-	}
+    if(e->data.local_player.jump_ticks > 0)
+        e->data.local_player.jump_ticks--;
 
-	aabb_setsize_centered(&bbox, 0.6F, 1.8F, 0.6F);
-	aabb_translate(&bbox, 0.0F, 1.8F / 2.0F - EYE_HEIGHT, 0.0F);
+    if(jumping) {
+        if(in_water || in_lava) {
+            e->vel[1] += 0.04F;
+        } else if(e->on_ground && e->data.local_player.jump_ticks == 0) {
+            e->vel[1] = 0.42F;
+            e->data.local_player.jump_ticks = 10;
+        }
+    } else {
+        e->data.local_player.jump_ticks = 0;
+    }
 
-	// unstuck player
-	struct AABB tmp1 = bbox, tmp2 = bbox;
-	float unstuck_move = 0.01F;
-	aabb_translate(&tmp1, e->pos[0], e->pos[1], e->pos[2]);
-	aabb_translate(&tmp2, e->pos[0], e->pos[1] + unstuck_move, e->pos[2]);
+    aabb_setsize_centered(&bbox, 0.6F, 1.8F, 0.6F);
+    aabb_translate(&bbox, 0.0F, 1.8F / 2.0F - EYE_HEIGHT, 0.0F);
 
-	// is the player stuck in the floor due to inaccuracy?
-	if(entity_aabb_intersection(e, &tmp1)
-	   && !entity_aabb_intersection(e, &tmp2)) {
-		e->pos[1] += unstuck_move;
-	}
+    // unstuck player
+    struct AABB tmp1 = bbox, tmp2 = bbox;
+    float unstuck_move = 0.01F;
+    aabb_translate(&tmp1, e->pos[0], e->pos[1], e->pos[2]);
+    aabb_translate(&tmp2, e->pos[0], e->pos[1] + unstuck_move, e->pos[2]);
 
-	vec3 new_pos, new_vel;
-	glm_vec3_copy(e->pos, new_pos);
-	glm_vec3_copy(e->vel, new_vel);
+    // is the player stuck in the floor due to inaccuracy?
+    if(entity_aabb_intersection(e, &tmp1)
+       && !entity_aabb_intersection(e, &tmp2)) {
+        e->pos[1] += unstuck_move;
+    }
 
-	bool collision_xz = false;
+    vec3 new_pos, new_vel;
+    glm_vec3_copy(e->pos, new_pos);
+    glm_vec3_copy(e->vel, new_vel);
 
-	for(int k = 0; k < 3; k++)
-		entity_try_move(e, e->pos, e->vel, &bbox, (size_t[]) {1, 0, 2}[k],
-						&collision_xz, &e->on_ground);
+    bool collision_xz = false;
 
-	if(e->on_ground) {
-		bool collision = false;
-		bool ground = e->on_ground;
+    for(int k = 0; k < 3; k++)
+        entity_try_move(e, e->pos, e->vel, &bbox, (size_t[]) {1, 0, 2}[k],
+                        &collision_xz, &e->on_ground);
 
-		new_vel[1] = 0.6F;
-		entity_try_move(e, new_pos, new_vel, &bbox, 1, &collision, &ground);
+    if(e->on_ground) {
+        bool collision = false;
+        bool ground = e->on_ground;
 
-		new_vel[1] = 0.0F;
-		entity_try_move(e, new_pos, new_vel, &bbox, 0, &collision, &ground);
-		entity_try_move(e, new_pos, new_vel, &bbox, 2, &collision, &ground);
+        new_vel[1] = 0.6F;
+        entity_try_move(e, new_pos, new_vel, &bbox, 1, &collision, &ground);
 
-		new_vel[1] = -0.6F;
-		entity_try_move(e, new_pos, new_vel, &bbox, 1, &collision, &ground);
+        new_vel[1] = 0.0F;
+        entity_try_move(e, new_pos, new_vel, &bbox, 0, &collision, &ground);
+        entity_try_move(e, new_pos, new_vel, &bbox, 2, &collision, &ground);
 
-		if(new_pos[1] > e->pos_old[1]
-		   && glm_vec3_distance2(e->pos_old, e->pos)
-			   < glm_vec3_distance2(e->pos_old, new_pos)) {
-			collision_xz = collision;
-			e->on_ground = ground;
-			glm_vec3_copy(new_pos, e->pos);
-			glm_vec3_copy(new_vel, e->vel);
-		}
-	}
+        new_vel[1] = -0.6F;
+        entity_try_move(e, new_pos, new_vel, &bbox, 1, &collision, &ground);
 
-	if(in_lava) {
-		e->vel[0] *= 0.5F;
-		e->vel[2] *= 0.5F;
-		e->vel[1] = e->vel[1] * 0.5F - 0.02F;
-	} else if(in_water) {
-		e->vel[0] *= 0.8F;
-		e->vel[2] *= 0.8F;
-		e->vel[1] = e->vel[1] * 0.8F - 0.02F;
-	} else {
-		e->vel[0] *= slipperiness * 0.91F;
-		e->vel[2] *= slipperiness * 0.91F;
-		e->vel[1] -= 0.08F;
+        if(new_pos[1] > e->pos_old[1]
+           && glm_vec3_distance2(e->pos_old, e->pos)
+               < glm_vec3_distance2(e->pos_old, new_pos)) {
+            collision_xz = collision;
+            e->on_ground = ground;
+            glm_vec3_copy(new_pos, e->pos);
+            glm_vec3_copy(new_vel, e->vel);
+        }
+    }
 
-		struct block_data blk;
-		if(entity_get_block(e, floorf(e->pos[0]),
-							floorf(e->pos[1] - EYE_HEIGHT), floorf(e->pos[2]),
-							&blk)
-		   && blk.type == BLOCK_LADDER) {
-			if(collision_xz)
-				e->vel[1] = 0.12F;
+    if(in_lava) {
+        e->vel[0] *= 0.5F;
+        e->vel[2] *= 0.5F;
+        e->vel[1] = e->vel[1] * 0.5F - 0.02F;
+    } else if(in_water) {
+        e->vel[0] *= 0.8F;
+        e->vel[2] *= 0.8F;
+        e->vel[1] = e->vel[1] * 0.8F - 0.02F;
+    } else {
+        e->vel[0] *= slipperiness * 0.91F;
+        e->vel[2] *= slipperiness * 0.91F;
+        e->vel[1] -= 0.08F;
 
-			e->vel[0] = fmaxf(fminf(e->vel[0], 0.15F), -0.15F);
-			e->vel[1] = fmaxf(e->vel[1], -0.15F);
-			e->vel[2] = fmaxf(fminf(e->vel[2], 0.15F), -0.15F);
-		}
+        struct block_data blk;
+        if(entity_get_block(e, floorf(e->pos[0]),
+                            floorf(e->pos[1] - EYE_HEIGHT), floorf(e->pos[2]),
+                            &blk)
+           && blk.type == BLOCK_LADDER) {
+            if(collision_xz)
+                e->vel[1] = 0.12F;
 
-		e->vel[1] *= 0.98F;
-	}
+            e->vel[0] = fmaxf(fminf(e->vel[0], 0.15F), -0.15F);
+            e->vel[1] = fmaxf(e->vel[1], -0.15F);
+            e->vel[2] = fmaxf(fminf(e->vel[2], 0.15F), -0.15F);
+        }
 
-	if(collision_xz && (in_lava || in_water)) {
-		struct AABB tmp;
-		aabb_setsize_centered(&tmp, 0.6F, 1.8F, 0.6F);
-		aabb_translate(&tmp, e->pos[0] + e->vel[0],
-					   e->pos[1] + e->vel[1] + 1.8F / 2.0F - 1.62F + 0.6F,
-					   e->pos[2] + e->vel[2]);
+        e->vel[1] *= 0.98F;
+    }
 
-		if(!entity_intersection(e, &tmp, test_in_liquid))
-			e->vel[1] = 0.3F;
-	}
+    if(collision_xz && (in_lava || in_water)) {
+        struct AABB tmp;
+        aabb_setsize_centered(&tmp, 0.6F, 1.8F, 0.6F);
+        aabb_translate(&tmp, e->pos[0] + e->vel[0],
+                       e->pos[1] + e->vel[1] + 1.8F / 2.0F - 1.62F + 0.6F,
+                       e->pos[2] + e->vel[2]);
 
-	return false;
+        if(!entity_intersection(e, &tmp, test_in_liquid))
+            e->vel[1] = 0.3F;
+    }
+
+    return false;
 }
 
 bool entity_local_player_block_collide(vec3 pos, struct block_info* blk_info) {
-	assert(pos && blk_info);
+    assert(pos && blk_info);
 
-	struct AABB bbox;
-	aabb_setsize_centered(&bbox, 0.6F, 1.8F, 0.6F);
-	aabb_translate(&bbox, pos[0], 1.8F / 2.0F - EYE_HEIGHT + pos[1], pos[2]);
+    struct AABB bbox;
+    aabb_setsize_centered(&bbox, 0.6F, 1.8F, 0.6F);
+    aabb_translate(&bbox, pos[0], 1.8F / 2.0F - EYE_HEIGHT + pos[1], pos[2]);
 
-	return entity_block_aabb_test(&bbox, blk_info);
+    return entity_block_aabb_test(&bbox, blk_info);
 }
 
 void entity_local_player(uint32_t id, struct entity* e, struct world* w) {
-	assert(e && w);
+    assert(e && w);
 
-	e->id = id;
-	e->tick_server = NULL;
-	e->tick_client = entity_tick;
-	e->render = NULL;
-	e->teleport = entity_default_teleport;
-	e->type = ENTITY_LOCAL_PLAYER;
-	e->data.local_player.capture_input = false;
+    e->id = id;
+    e->tick_server = NULL;
+    e->tick_client = entity_tick;
+    e->render = NULL;
+    e->teleport = entity_default_teleport;
+    e->type = ENTITY_LOCAL_PLAYER;
+    e->data.local_player.capture_input = false;
 
-	entity_default_init(e, false, w);
-	e->data.local_player.jump_ticks = 0;
+    // Default to PLAYER_ONE, override later after creation if needed
+    e->data.local_player.player_id = PLAYER_ONE;
+
+    entity_default_init(e, false, w);
+    e->data.local_player.jump_ticks = 0;
 }

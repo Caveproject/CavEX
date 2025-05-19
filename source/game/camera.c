@@ -18,6 +18,8 @@
 */
 
 #include <assert.h>
+#include <math.h>
+#include <float.h>
 
 #include "../platform/gfx.h"
 #include "../platform/input.h"
@@ -101,11 +103,12 @@ void camera_ray_pick(struct world* w, float gx0, float gy0, float gz0,
 	}
 }
 
-void camera_physics(struct camera* c, float dt) {
+// Extended camera physics with player ID (0 or 1)
+void camera_physics(struct camera* c, float dt, int player_id) {
 	assert(c);
 
 	float jdx, jdy;
-	if(input_joystick(dt, &jdx, &jdy)) {
+	if(input_joystick_for_player(player_id, dt, &jdx, &jdy)) {
 		c->rx -= jdx * 2.0F;
 		c->ry -= jdy * 2.0F;
 	}
@@ -114,32 +117,32 @@ void camera_physics(struct camera* c, float dt) {
 	float speed_c = 40.0F;
 	float air_friction = 0.05F;
 
-	if(input_held(IB_LEFT)) {
+	if(input_held_for_player(player_id, IB_LEFT)) {
 		acc_x += cos(c->rx) * speed_c;
 		acc_z -= sin(c->rx) * speed_c;
 	}
 
-	if(input_held(IB_RIGHT)) {
+	if(input_held_for_player(player_id, IB_RIGHT)) {
 		acc_x -= cos(c->rx) * speed_c;
 		acc_z += sin(c->rx) * speed_c;
 	}
 
-	if(input_held(IB_FORWARD)) {
+	if(input_held_for_player(player_id, IB_FORWARD)) {
 		acc_x += sin(c->rx) * sin(c->ry) * speed_c;
 		acc_y += cos(c->ry) * speed_c;
 		acc_z += cos(c->rx) * sin(c->ry) * speed_c;
 	}
 
-	if(input_held(IB_BACKWARD)) {
+	if(input_held_for_player(player_id, IB_BACKWARD)) {
 		acc_x -= sin(c->rx) * sin(c->ry) * speed_c;
 		acc_y -= cos(c->ry) * speed_c;
 		acc_z -= cos(c->rx) * sin(c->ry) * speed_c;
 	}
 
-	if(input_held(IB_JUMP))
+	if(input_held_for_player(player_id, IB_JUMP))
 		acc_y += speed_c;
 
-	if(input_held(IB_SNEAK))
+	if(input_held_for_player(player_id, IB_SNEAK))
 		acc_y -= speed_c;
 
 	c->controller.vx += acc_x * dt;
@@ -198,7 +201,7 @@ void camera_update(struct camera* c, bool in_water) {
 }
 
 void camera_attach(struct camera* c, struct entity* e, float tick_delta,
-				   float dt) {
+				   float dt, int player_id) {
 	vec3 pos_lerp;
 	glm_vec3_lerp(e->pos_old, e->pos, tick_delta, pos_lerp);
 	c->x = pos_lerp[0];
@@ -206,7 +209,7 @@ void camera_attach(struct camera* c, struct entity* e, float tick_delta,
 	c->z = pos_lerp[2];
 
 	float jdx, jdy;
-	if(e->data.local_player.capture_input && input_joystick(dt, &jdx, &jdy)) {
+	if(e->data.local_player.capture_input && input_joystick_for_player(player_id, dt, &jdx, &jdy)) {
 		c->rx -= jdx * 2.0F;
 		c->ry -= jdy * 2.0F;
 	}

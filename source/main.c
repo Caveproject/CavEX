@@ -26,6 +26,7 @@
 
 #ifdef PLATFORM_WII
 #include <fat.h>
+#include <wiiuse/wpad.h>
 #endif
 
 #include "chunk_mesher.h"
@@ -48,9 +49,14 @@
 #include "lodepng/lodepng.h"
 
 int main(void) {
+	bool multiplayer_enabled = true;
+	bool split_vertical = true; // false for horizontal
+
+	struct camera camera1 = {0}, camera2 = {0};
+	struct entity* player1 = NULL;
+	struct entity* player2 = NULL;
+
 	gstate.quit = false;
-	gstate.camera = (struct camera) {
-		.x = 0, .y = 0, .z = 0, .rx = 0, .ry = 0, .controller = {0, 0, 0}};
 	gstate.config.fov = 70.0F;
 	gstate.config.render_distance = 192.0F;
 	gstate.config.fog_distance = 5 * 16.0F;
@@ -64,6 +70,7 @@ int main(void) {
 
 #ifdef PLATFORM_WII
 	fatInitDefault();
+	WPAD_Init();
 #endif
 
 	config_create(&gstate.config_user, "config.json");
@@ -87,7 +94,13 @@ int main(void) {
 	particle_init();
 
 	dict_entity_init(gstate.entities);
-	gstate.local_player = NULL;
+
+	player1 = entity_local_player_create(&gstate.world, 0.0f, 64.0f, 0.0f);
+	player2 = entity_local_player_create(&gstate.world, 2.0f, 64.0f, 0.0f);
+	gstate.local_player = player1;
+
+	camera_init(&camera1);
+	camera_init(&camera2);
 
 	struct server_local server;
 	server_local_create(&server);
@@ -95,159 +108,98 @@ int main(void) {
 	ptime_t last_frame = time_get();
 	ptime_t last_tick = last_frame;
 
-	while(!gstate.quit) {
+	while (!gstate.quit) {
 		ptime_t this_frame = time_get();
 		gstate.stats.dt = time_diff_s(last_frame, this_frame);
 		gstate.stats.fps = 1.0F / gstate.stats.dt;
 		last_frame = this_frame;
 
-		float daytime
-			= (float)((gstate.world_time
-					   + time_diff_ms(gstate.world_time_start, this_frame)
-						   / DAY_TICK_MS)
-					  % DAY_LENGTH_TICKS)
-			/ (float)DAY_LENGTH_TICKS;
+		float daytime = (float)((gstate.world_time + time_diff_ms(gstate.world_time_start, this_frame) / DAY_TICK_MS) % DAY_LENGTH_TICKS) / (float)DAY_LENGTH_TICKS;
 
 		clin_update();
 
 		float tick_delta = time_diff_s(last_tick, time_get()) / 0.05F;
-
-		while(tick_delta >= 1.0F) {
+		while (tick_delta >= 1.0F) {
 			last_tick = time_add_ms(last_tick, 50);
 			tick_delta -= 1.0F;
 			particle_update();
 			entities_client_tick(gstate.entities);
 		}
 
-		if(gstate.local_player)
-			camera_attach(&gstate.camera, gstate.local_player, tick_delta,
-						  gstate.stats.dt);
+		camera_attach(&camera1, player1, tick_delta, gstate.stats.dt);
+		camera_attach(&camera2, player2, tick_delta, gstate.stats.dt);
 
-		bool render_world
-			= gstate.current_screen->render_world && gstate.world_loaded;
-		bool in_water = false;
-
-		if(render_world) {
-			struct block_data blk = world_get_block(
-				&gstate.world, floorf(gstate.camera.x),
-				floorf(gstate.camera.y + 0.1F), floorf(gstate.camera.z));
-			in_water
-				= blk.type == BLOCK_WATER_FLOW || blk.type == BLOCK_WATER_STILL;
-		}
-
-		camera_update(&gstate.camera, in_water);
-
-		if(render_world) {
-			world_pre_render(&gstate.world, &gstate.camera, gstate.camera.view);
-
-			struct camera* c = &gstate.camera;
-			camera_ray_pick(&gstate.world, c->x, c->y, c->z,
-							c->x + sinf(c->rx) * sinf(c->ry) * 4.5F,
-							c->y + cosf(c->ry) * 4.5F,
-							c->z + cosf(c->rx) * sinf(c->ry) * 4.5F,
-							&gstate.camera_hit);
-		} else {
-			world_pre_render_clear(&gstate.world);
-			gstate.camera_hit.hit = false;
-		}
+		camera_update(&camera1, false);
+		camera_update(&camera2, false);
 
 		world_update_lighting(&gstate.world);
 		world_build_chunks(&gstate.world, CHUNK_MESHER_QLENGTH);
 
-		if(gstate.current_screen->update)
-			gstate.current_screen->update(gstate.current_screen,
-										  gstate.stats.dt);
+		if (gstate.current_screen->update)
+			gstate.current_screen->update(gstate.current_screen, gstate.stats.dt);
 
 		gfx_flip_buffers(&gstate.stats.dt_gpu, &gstate.stats.dt_vsync);
-
-		// must not modify displaylists while still rendering!
 		chunk_mesher_receive();
-		world_render_completed(&gstate.world, render_world);
+		world_render_completed(&gstate.world, true);
 
 		vec3 top_plane_color, bottom_plane_color, atmosphere_color;
-		daytime_sky_colors(daytime, top_plane_color, bottom_plane_color,
-						   atmosphere_color);
+		daytime_sky_colors(daytime, top_plane_color, bottom_plane_color, atmosphere_color);
 
-		if(render_world) {
-			gfx_clear_buffers(atmosphere_color[0], atmosphere_color[1],
-							  atmosphere_color[2]);
-		} else {
-			gfx_clear_buffers(128, 128, 128);
-		}
+		gfx_clear_buffers(atmosphere_color[0], atmosphere_color[1], atmosphere_color[2]);
+		gfx_fog_color(atmosphere_color[0], atmosphere_color[1], atmosphere_color[2]);
 
-		gfx_fog_color(atmosphere_color[0], atmosphere_color[1],
-					  atmosphere_color[2]);
+		int width = gfx_width();
+		int height = gfx_height();
+		int half_width = width / (split_vertical ? 2 : 1);
+		int half_height = height / (split_vertical ? 1 : 2);
 
-		gfx_mode_world();
-		gfx_matrix_projection(gstate.camera.projection, true);
+		for (int i = 0; i < (multiplayer_enabled ? 2 : 1); ++i) {
+			struct camera* cam = i == 0 ? &camera1 : &camera2;
+			int x = split_vertical ? i * half_width : 0;
+			int y = split_vertical ? 0 : i * half_height;
 
-		if(render_world) {
-			gfx_update_light(daytime_brightness(daytime),
-							 world_dimension_light(&gstate.world));
+			GX_SetViewport(x, y, half_width, half_height, 0.0f, 1.0f);
+			GX_SetScissor(x, y, half_width, half_height);
 
-			if(gstate.world.dimension == WORLD_DIM_OVERWORLD)
-				gutil_sky_box(gstate.camera.view,
-							  daytime_celestial_angle(daytime), top_plane_color,
-							  bottom_plane_color);
+			gfx_mode_world();
+			gfx_matrix_projection(cam->projection, true);
+			gfx_update_light(daytime_brightness(daytime), world_dimension_light(&gstate.world));
 
-			gstate.stats.chunks_rendered
-				= world_render(&gstate.world, &gstate.camera, false);
-		} else {
-			gstate.stats.chunks_rendered = 0;
-		}
+			if (gstate.world.dimension == WORLD_DIM_OVERWORLD)
+				gutil_sky_box(cam->view, daytime_celestial_angle(daytime), top_plane_color, bottom_plane_color);
 
-		if(gstate.current_screen->render3D) {
-			gfx_fog(false);
-			gstate.current_screen->render3D(gstate.current_screen,
-											gstate.camera.view);
-		}
+			world_render(&gstate.world, cam, false);
+			entities_client_render(gstate.entities, cam, tick_delta);
+			world_render(&gstate.world, cam, true);
 
-		if(render_world) {
-			gfx_fog(false);
-			particle_render(
-				gstate.camera.view,
-				(vec3) {gstate.camera.x, gstate.camera.y, gstate.camera.z},
-				tick_delta);
-			entities_client_render(gstate.entities, &gstate.camera, tick_delta);
-			gfx_fog(true);
-
-			world_render(&gstate.world, &gstate.camera, true);
-
-			if(gstate.world.dimension == WORLD_DIM_OVERWORLD)
-				gutil_clouds(gstate.camera.view, daytime_brightness(daytime));
+			if (gstate.world.dimension == WORLD_DIM_OVERWORLD)
+				gutil_clouds(cam->view, daytime_brightness(daytime));
 		}
 
 		gfx_mode_gui();
 
-		if(in_water) {
-			gfx_bind_texture(&texture_water);
-			gutil_texquad_col(0, 0, -gstate.camera.rx / GLM_PI * 256,
-							  gstate.camera.ry / GLM_PI * 256, 512,
-							  512 * (float)gfx_height() / (float)gfx_width(),
-							  gfx_width(), gfx_height(), 0xFF, 0xFF, 0xFF,
-							  0x80);
-		}
+		if (gstate.current_screen->render2D)
+			gstate.current_screen->render2D(gstate.current_screen, width, height);
 
-		if(gstate.current_screen->render2D)
-			gstate.current_screen->render2D(gstate.current_screen, gfx_width(),
-											gfx_height());
-
-		if(input_pressed(IB_SCREENSHOT)) {
+		if (input_pressed(IB_SCREENSHOT)) {
 			size_t width, height;
 			gfx_copy_framebuffer(NULL, &width, &height);
-
 			void* image = malloc(width * height * 4);
-
-			if(image) {
+			if (image) {
 				gfx_copy_framebuffer(image, &width, &height);
-
 				char name[64];
 				snprintf(name, sizeof(name), "%ld.png", (long)time(NULL));
-
 				lodepng_encode32_file(name, image, width, height);
 				free(image);
 			}
 		}
+
+#ifdef PLATFORM_WII
+		WPAD_ScanPads();
+		u32 buttons1 = WPAD_ButtonsHeld(0);
+		u32 buttons2 = WPAD_ButtonsHeld(1);
+		// TODO: Handle buttons for player1/player2
+#endif
 
 		input_poll();
 		gfx_finish(true);

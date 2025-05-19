@@ -50,7 +50,7 @@
 
 int main(void) {
 	bool multiplayer_enabled = true;
-	bool split_vertical = true; // false for horizontal
+	bool split_vertical = true; // false = horizontal split
 
 	struct camera camera1 = {0}, camera2 = {0};
 	struct entity* player1 = NULL;
@@ -93,8 +93,6 @@ int main(void) {
 	chunk_mesher_init();
 	particle_init();
 
-	dict_entity_init(gstate.entities);
-
 	player1 = entity_local_player_create(&gstate.world, 0.0f, 64.0f, 0.0f);
 	player2 = entity_local_player_create(&gstate.world, 2.0f, 64.0f, 0.0f);
 	gstate.local_player = player1;
@@ -126,6 +124,14 @@ int main(void) {
 			entities_client_tick(gstate.entities);
 		}
 
+		// Update input states for all players
+		updateInput();
+
+		// Process input for players here if needed, e.g. movement or actions:
+		// Example (pseudo):
+		// if (isKeyPressed(0, IB_JUMP)) { /* player1 jump logic */ }
+		// if (isKeyPressed(1, IB_JUMP)) { /* player2 jump logic */ }
+
 		camera_attach(&camera1, player1, tick_delta, gstate.stats.dt);
 		camera_attach(&camera2, player2, tick_delta, gstate.stats.dt);
 
@@ -153,7 +159,8 @@ int main(void) {
 		int half_width = width / (split_vertical ? 2 : 1);
 		int half_height = height / (split_vertical ? 1 : 2);
 
-		for (int i = 0; i < (multiplayer_enabled ? 2 : 1); ++i) {
+		int num_views = multiplayer_enabled ? 2 : 1;
+		for (int i = 0; i < num_views; ++i) {
 			struct camera* cam = i == 0 ? &camera1 : &camera2;
 			int x = split_vertical ? i * half_width : 0;
 			int y = split_vertical ? 0 : i * half_height;
@@ -181,7 +188,8 @@ int main(void) {
 		if (gstate.current_screen->render2D)
 			gstate.current_screen->render2D(gstate.current_screen, width, height);
 
-		if (input_pressed(IB_SCREENSHOT)) {
+		// Screenshot input: Check player 0 (you can expand to player 1)
+		if (isKeyPressed(0, IB_SCREENSHOT)) {
 			size_t width, height;
 			gfx_copy_framebuffer(NULL, &width, &height);
 			void* image = malloc(width * height * 4);
@@ -194,14 +202,6 @@ int main(void) {
 			}
 		}
 
-#ifdef PLATFORM_WII
-		WPAD_ScanPads();
-		u32 buttons1 = WPAD_ButtonsHeld(0);
-		u32 buttons2 = WPAD_ButtonsHeld(1);
-		// TODO: Handle buttons for player1/player2
-#endif
-
-		input_poll();
 		gfx_finish(true);
 	}
 

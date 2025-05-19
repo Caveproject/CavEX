@@ -19,12 +19,6 @@
 * main menu
 * generation of new chunks
 * biome colors
-* ~~player physics~~
-* ~~inventory management~~
-* ~~block placement~~ and destruction logic
-* ~~(random)~~ block updates
-* ~~item actions~~
-* real texture pack support
 * Beta 1.7.3 multiplayer support
 
 ## Screenshot

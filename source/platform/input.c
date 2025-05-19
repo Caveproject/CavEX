@@ -18,9 +18,10 @@
 */
 
 #include <assert.h>
+#include <stdbool.h>
+#include <math.h>
 
 #include "input.h"
-#include <math.h>
 
 #ifdef PLATFORM_PC
 #include <SDL2/SDL.h>
@@ -31,22 +32,21 @@
 #endif
 
 #define MAX_PLAYERS 2
+#define MAX_KEYS 256
 
 typedef struct {
     float x, y;
 } Vec2;
 
-Vec2 leftStick[MAX_PLAYERS] = {{0}};
-Vec2 rightStick[MAX_PLAYERS] = {{0}};  // Reserved for future use if needed
-bool keys[MAX_PLAYERS][256] = {{0}};
-bool prevKeys[MAX_PLAYERS][256] = {{0}};
-
-// For PC or single Wii remote fallback (default to 0)
-int inputChannel = 0;
+// Per-player input state
+static Vec2 leftStick[MAX_PLAYERS];
+static Vec2 rightStick[MAX_PLAYERS]; // Reserved for future use
+static bool keys[MAX_PLAYERS][MAX_KEYS];
+static bool prevKeys[MAX_PLAYERS][MAX_KEYS];
 
 #ifdef PLATFORM_WII
-// Map your key indices to Wii buttons (customize if needed)
-u32 mapKeyToWiiButton(int key) {
+// Map internal key indices to Wii buttons
+static u32 mapKeyToWiiButton(int key) {
     switch (key) {
         case 0: return WPAD_BUTTON_A;
         case 1: return WPAD_BUTTON_B;
@@ -66,15 +66,14 @@ u32 mapKeyToWiiButton(int key) {
 
 void updateInput() {
 #ifdef PLATFORM_PC
-    // PC updates single input (no multiplayer)
+    // PC single player input update
     const Uint8 *state = SDL_GetKeyboardState(NULL);
-    for (int i = 0; i < 256; ++i) {
+    for (int i = 0; i < MAX_KEYS; ++i) {
         prevKeys[0][i] = keys[0][i];
         keys[0][i] = state[i];
     }
-
     int x, y;
-    Uint32 mouseButtons = SDL_GetMouseState(&x, &y);
+    SDL_GetMouseState(&x, &y);
     leftStick[0].x = (float)x;
     leftStick[0].y = (float)y;
 #endif
@@ -85,8 +84,8 @@ void updateInput() {
     for (int player = 0; player < MAX_PLAYERS; ++player) {
         s32 err = WPAD_Probe(player, NULL);
         if (err == WPAD_ERR_NO_CONTROLLER) {
-            // No controller connected for this player, clear input
-            for (int i = 0; i < 256; ++i) {
+            // No controller connected: clear input
+            for (int i = 0; i < MAX_KEYS; ++i) {
                 prevKeys[player][i] = keys[player][i];
                 keys[player][i] = false;
             }
@@ -95,15 +94,19 @@ void updateInput() {
             continue;
         }
 
+        // Controller connected: update keys
         u32 heldButtons = WPAD_ButtonsHeld(player);
-
-        for (int i = 0; i < 256; ++i) {
+        for (int i = 0; i < MAX_KEYS; ++i) {
             prevKeys[player][i] = keys[player][i];
-            keys[player][i] = (heldButtons & mapKeyToWiiButton(i)) != 0;
+            u32 btnMask = mapKeyToWiiButton(i);
+            if (btnMask != 0)
+                keys[player][i] = (heldButtons & btnMask) != 0;
+            else
+                keys[player][i] = false;
         }
 
         WPADData *data = WPAD_Data(player);
-        if (data->exp.type == WPAD_EXP_NUNCHUK) {
+        if (data && data->exp.type == WPAD_EXP_NUNCHUK) {
             leftStick[player].x = (float)data->exp.nunchuk.js.pos.x;
             leftStick[player].y = (float)data->exp.nunchuk.js.pos.y;
         } else {
@@ -114,29 +117,30 @@ void updateInput() {
 #endif
 }
 
-// Query functions now take player number (0 or 1)
 bool isKeyDown(int player, int key) {
-    if (player < 0 || player >= MAX_PLAYERS) return false;
+    assert(player >= 0 && player < MAX_PLAYERS);
+    assert(key >= 0 && key < MAX_KEYS);
     return keys[player][key];
 }
 
 bool isKeyPressed(int player, int key) {
-    if (player < 0 || player >= MAX_PLAYERS) return false;
+    assert(player >= 0 && player < MAX_PLAYERS);
+    assert(key >= 0 && key < MAX_KEYS);
     return keys[player][key] && !prevKeys[player][key];
 }
 
 bool isKeyReleased(int player, int key) {
-    if (player < 0 || player >= MAX_PLAYERS) return false;
+    assert(player >= 0 && player < MAX_PLAYERS);
+    assert(key >= 0 && key < MAX_KEYS);
     return !keys[player][key] && prevKeys[player][key];
 }
 
-// Optional: Set input channel for single player (mostly for PC or fallback)
-void setInputChannel(int channel) {
-    inputChannel = channel;
+Vec2 getLeftStick(int player) {
+    assert(player >= 0 && player < MAX_PLAYERS);
+    return leftStick[player];
 }
 
-// Get the left stick position of a player
-Vec2 getLeftStick(int player) {
-    if (player < 0 || player >= MAX_PLAYERS) return (Vec2){0,0};
-    return leftStick[player];
+Vec2 getRightStick(int player) {
+    assert(player >= 0 && player < MAX_PLAYERS);
+    return rightStick[player];
 }

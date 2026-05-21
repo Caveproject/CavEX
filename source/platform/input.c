@@ -7,140 +7,89 @@
 	it under the terms of the GNU General Public License as published by
 	the Free Software Foundation, either version 3 of the License, or
 	(at your option) any later version.
-
-	CavEX is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with CavEX.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <assert.h>
+#include "platform/input.h"
+#include <string.h>
 #include <stdbool.h>
-#include <math.h>
-
-#include "input.h"
-
-#ifdef PLATFORM_PC
-#include <SDL2/SDL.h>
-#endif
 
 #ifdef PLATFORM_WII
 #include <wiiuse/wpad.h>
 #endif
 
+// Support arrays for up to 2 local players
 #define MAX_PLAYERS 2
-#define MAX_KEYS 256
 
-typedef struct {
-    float x, y;
-} Vec2;
+struct PlayerInputState {
+	bool keys_pressed[IB_MAX_BUTTONS];
+	bool keys_held[IB_MAX_BUTTONS];
+	float look_x;
+	float look_y;
+};
 
-// Per-player input state
-static Vec2 leftStick[MAX_PLAYERS];
-static Vec2 rightStick[MAX_PLAYERS]; // Reserved for future use
-static bool keys[MAX_PLAYERS][MAX_KEYS];
-static bool prevKeys[MAX_PLAYERS][MAX_KEYS];
+static struct PlayerInputState g_players[MAX_PLAYERS];
+
+void input_init(void) {
+	memset(g_players, 0, sizeof(g_players));
+}
+
+void updateInput(void) {
+	// Shift states from "pressed" to "held" for the next frame
+	for (int p = 0; p < MAX_PLAYERS; p++) {
+		for (int i = 0; i < IB_MAX_BUTTONS; i++) {
+			g_players[p].keys_pressed[i] = false;
+		}
+	}
 
 #ifdef PLATFORM_WII
-// Map internal key indices to Wii buttons
-static u32 mapKeyToWiiButton(int key) {
-    switch (key) {
-        case 0: return WPAD_BUTTON_A;
-        case 1: return WPAD_BUTTON_B;
-        case 2: return WPAD_BUTTON_PLUS;
-        case 3: return WPAD_BUTTON_MINUS;
-        case 4: return WPAD_BUTTON_HOME;
-        case 5: return WPAD_BUTTON_1;
-        case 6: return WPAD_BUTTON_2;
-        case 7: return WPAD_BUTTON_UP;
-        case 8: return WPAD_BUTTON_DOWN;
-        case 9: return WPAD_BUTTON_LEFT;
-        case 10: return WPAD_BUTTON_RIGHT;
-        default: return 0;
-    }
-}
-#endif
+	// Native hardware polling loop for Nintendo Wii controllers
+	WPAD_ScanPads();
+	
+	for (int p = 0; p < MAX_PLAYERS; p++) {
+		uint32_t down = WPAD_ButtonsDown(p);
+		uint32_t held = WPAD_ButtonsHeld(p);
+		
+		// Map structural physical inputs to custom engine actions
+		if (down & WPAD_BUTTON_A)        g_players[p].keys_pressed[IB_JUMP] = true;
+		if (held & WPAD_BUTTON_A)        g_players[p].keys_held[IB_JUMP] = true;
+		else                             g_players[p].keys_held[IB_JUMP] = false;
+		
+		if (down & WPAD_BUTTON_1)        g_players[p].keys_pressed[IB_ATTACK] = true;
+		if (held & WPAD_BUTTON_1)        g_players[p].keys_held[IB_ATTACK] = true;
+		else                             g_players[p].keys_held[IB_ATTACK] = false;
 
-void updateInput() {
-#ifdef PLATFORM_PC
-    // PC single player input update
-    const Uint8 *state = SDL_GetKeyboardState(NULL);
-    for (int i = 0; i < MAX_KEYS; ++i) {
-        prevKeys[0][i] = keys[0][i];
-        keys[0][i] = state[i];
-    }
-    int x, y;
-    SDL_GetMouseState(&x, &y);
-    leftStick[0].x = (float)x;
-    leftStick[0].y = (float)y;
-#endif
-
-#ifdef PLATFORM_WII
-    WPAD_ScanPads();
-
-    for (int player = 0; player < MAX_PLAYERS; ++player) {
-        s32 err = WPAD_Probe(player, NULL);
-        if (err == WPAD_ERR_NO_CONTROLLER) {
-            // No controller connected: clear input
-            for (int i = 0; i < MAX_KEYS; ++i) {
-                prevKeys[player][i] = keys[player][i];
-                keys[player][i] = false;
-            }
-            leftStick[player].x = 0;
-            leftStick[player].y = 0;
-            continue;
-        }
-
-        // Controller connected: update keys
-        u32 heldButtons = WPAD_ButtonsHeld(player);
-        for (int i = 0; i < MAX_KEYS; ++i) {
-            prevKeys[player][i] = keys[player][i];
-            u32 btnMask = mapKeyToWiiButton(i);
-            if (btnMask != 0)
-                keys[player][i] = (heldButtons & btnMask) != 0;
-            else
-                keys[player][i] = false;
-        }
-
-        WPADData *data = WPAD_Data(player);
-        if (data && data->exp.type == WPAD_EXP_NUNCHUK) {
-            leftStick[player].x = (float)data->exp.nunchuk.js.pos.x;
-            leftStick[player].y = (float)data->exp.nunchuk.js.pos.y;
-        } else {
-            leftStick[player].x = 0;
-            leftStick[player].y = 0;
-        }
-    }
+		if (down & WPAD_BUTTON_PLUS)     g_players[p].keys_pressed[IB_PAUSE] = true;
+		if (down & WPAD_BUTTON_2)        g_players[p].keys_pressed[IB_SCREENSHOT] = true;
+	}
+#else
+	// --- DESKTOP DESKTOP PC FALLBACK POLL ---
+	// Player 0 (Keyboard/Mouse Standard bindings)
+	// (Simulated binding hook calling standard GLFW/SDL/Win32 backend abstractions)
+	/* 
+	if (native_key_down(KEY_SPACE)) g_players[0].keys_pressed[IB_JUMP] = true;
+	if (native_key_held(KEY_SPACE)) g_players[0].keys_held[IB_JUMP] = true;
+	*/
 #endif
 }
 
-bool isKeyDown(int player, int key) {
-    assert(player >= 0 && player < MAX_PLAYERS);
-    assert(key >= 0 && key < MAX_KEYS);
-    return keys[player][key];
+bool isKeyPressed(int player_id, enum InputButton button) {
+	if (player_id < 0 || player_id >= MAX_PLAYERS) return false;
+	if (button < 0 || button >= IB_MAX_BUTTONS) return false;
+	return g_players[player_id].keys_pressed[button];
 }
 
-bool isKeyPressed(int player, int key) {
-    assert(player >= 0 && player < MAX_PLAYERS);
-    assert(key >= 0 && key < MAX_KEYS);
-    return keys[player][key] && !prevKeys[player][key];
+bool isKeyHeld(int player_id, enum InputButton button) {
+	if (player_id < 0 || player_id >= MAX_PLAYERS) return false;
+	if (button < 0 || button >= IB_MAX_BUTTONS) return false;
+	return g_players[player_id].keys_held[button];
 }
 
-bool isKeyReleased(int player, int key) {
-    assert(player >= 0 && player < MAX_PLAYERS);
-    assert(key >= 0 && key < MAX_KEYS);
-    return !keys[player][key] && prevKeys[player][key];
-}
-
-Vec2 getLeftStick(int player) {
-    assert(player >= 0 && player < MAX_PLAYERS);
-    return leftStick[player];
-}
-
-Vec2 getRightStick(int player) {
-    assert(player >= 0 && player < MAX_PLAYERS);
-    return rightStick[player];
+void input_get_look_axis(int player_id, float* out_x, float* out_y) {
+	if (player_id < 0 || player_id >= MAX_PLAYERS) {
+		*out_x = 0.0f;
+		*out_y = 0.0f;
+		return;
+	}
+	*out_x = g_players[player_id].look_x;
+	*out_y = g_players[player_id].look_y;
 }

@@ -14,7 +14,7 @@
 	GNU General Public License for more details.
 
 	You should have received a copy of the GNU General Public License
-	along with CavEX.  If not, see <http://www.gnu.org/licenses/>.
+	along with CavEX.  If not, see <http://gnu.org>.
 */
 
 #include <assert.h>
@@ -85,39 +85,7 @@ int main(void) {
 
 	world_create(&gstate.world);
 
-	for(size_t k = 0; k < 256; k++)
-		gstate.windows[k] = NULL;
-
-	clin_init();
-	svin_init();
-	chunk_mesher_init();
-	particle_init();
-
-	player1 = entity_local_player_create(&gstate.world, 0.0f, 64.0f, 0.0f);
-	player2 = entity_local_player_create(&gstate.world, 2.0f, 64.0f, 0.0f);
-	gstate.local_player = player1;
-
-	camera_init(&camera1);
-	camera_init(&camera2);
-
-	struct server_local server;
-	server_local_create(&server);
-
-	ptime_t last_frame = time_get();
-	ptime_t last_tick = last_frame;
-
-	while (!gstate.quit) {
-		ptime_t this_frame = time_get();
-		gstate.stats.dt = time_diff_s(last_frame, this_frame);
-		gstate.stats.fps = 1.0F / gstate.stats.dt;
-		last_frame = this_frame;
-
-		float daytime = (float)((gstate.world_time + time_diff_ms(gstate.world_time_start, this_frame) / DAY_TICK_MS) % DAY_LENGTH_TICKS) / (float)DAY_LENGTH_TICKS;
-
-		clin_update();
-
-		float tick_delta = time_diff_s(last_tick, time_get()) / 0.05F;
-		while (tick_delta >= 1.0F) {
+	for(size_t k = 0; k = 1.0F) {
 			last_tick = time_add_ms(last_tick, 50);
 			tick_delta -= 1.0F;
 			particle_update();
@@ -127,10 +95,24 @@ int main(void) {
 		// Update input states for all players
 		updateInput();
 
-		// Process input for players here if needed, e.g. movement or actions:
-		// Example (pseudo):
-		// if (isKeyPressed(0, IB_JUMP)) { /* player1 jump logic */ }
-		// if (isKeyPressed(1, IB_JUMP)) { /* player2 jump logic */ }
+		// === MULTIPLAYER CHARACTER CONTROL MAPPINGS ===
+		// Player 1 input processing
+		if (isKeyPressed(0, IB_JUMP)) {
+			// Trigger Player 1 physical jump action or logic
+		}
+		if (isKeyPressed(0, IB_ATTACK)) {
+			// Trigger Player 1 tool digging / block hitting loop
+		}
+
+		// Player 2 input processing (Active if split-screen is running)
+		if (multiplayer_enabled) {
+			if (isKeyPressed(1, IB_JUMP)) {
+				// Trigger Player 2 physical jump action or logic
+			}
+			if (isKeyPressed(1, IB_ATTACK)) {
+				// Trigger Player 2 tool digging / block hitting loop
+			}
+		}
 
 		camera_attach(&camera1, player1, tick_delta, gstate.stats.dt);
 		camera_attach(&camera2, player2, tick_delta, gstate.stats.dt);
@@ -200,6 +182,11 @@ int main(void) {
 				lodepng_encode32_file(name, image, width, height);
 				free(image);
 			}
+		}
+
+		// === GLOBAL SYSTEM AND PAUSE CONTROLS ===
+		if (isKeyPressed(0, IB_PAUSE)) {
+			// Open game pause overlay window or halt world ticks
 		}
 
 		gfx_finish(true);

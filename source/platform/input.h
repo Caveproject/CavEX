@@ -7,80 +7,70 @@
 	it under the terms of the GNU General Public License as published by
 	the Free Software Foundation, either version 3 of the License, or
 	(at your option) any later version.
-
-	CavEX is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with CavEX.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef INPUT_H
-#define INPUT_H
+#ifndef PLATFORM_INPUT_H
+#define PLATFORM_INPUT_H
 
 #include <stdbool.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#define MAX_PLAYERS 2
-
-typedef struct {
-    float x;
-    float y;
-} Vec2;
-
-// Input buttons enumeration
-enum input_button {
+/**
+ * @brief Engine-level abstract button mappings.
+ * This decouples your physical device bindings (Wiimote/Keyboards) from gameplay logic.
+ */
+enum InputButton {
+	IB_JUMP,
+	IB_ATTACK,
+	IB_USE,
+	IB_PAUSE,
+	IB_SCREENSHOT,
 	IB_FORWARD,
 	IB_BACKWARD,
 	IB_LEFT,
 	IB_RIGHT,
-	IB_ACTION1,
-	IB_ACTION2,
-	IB_JUMP,
 	IB_SNEAK,
 	IB_INVENTORY,
-	IB_HOME,
-	IB_SCROLL_LEFT,
-	IB_SCROLL_RIGHT,
-	IB_GUI_UP,
-	IB_GUI_DOWN,
-	IB_GUI_LEFT,
-	IB_GUI_RIGHT,
-	IB_GUI_CLICK,
-	IB_GUI_CLICK_ALT,
-	IB_SCREENSHOT,
-	IB_TOTAL_KEYS  // Total number of buttons (for iteration)
+	
+	// Keep this at the absolute bottom to automatically track total array size
+	IB_MAX_BUTTONS 
 };
 
-enum input_category {
-	INPUT_CAT_WIIMOTE,
-	INPUT_CAT_NUNCHUK,
-	INPUT_CAT_CLASSIC_CONTROLLER,
-	INPUT_CAT_NONE,
-};
-
-// Initialize the input system
+/**
+ * @brief Initializes global input memory storage structures.
+ */
 void input_init(void);
 
-// Poll and update input states; call once per frame
+/**
+ * @brief Polls physical hardware layers (e.g., WPAD_ScanPads or Desktop Event Handlers)
+ * and shifts temporal buffer frames.
+ */
 void updateInput(void);
 
-// Query input states per player (0-based player index)
-bool isKeyDown(int player, int key);
-bool isKeyPressed(int player, int key);
-bool isKeyReleased(int player, int key);
+/**
+ * @brief Checks if a specific action button was freshly pressed down on this frame.
+ * 
+ * @param player_id Index of the local controller (0 = Player 1, 1 = Player 2).
+ * @param button The target abstract InputButton mapping.
+ * @return true If the action was activated this frame.
+ */
+bool isKeyPressed(int player_id, enum InputButton button);
 
-// Get analog stick values per player
-Vec2 getLeftStick(int player);
-Vec2 getRightStick(int player);
+/**
+ * @brief Checks if a specific action button is actively being held down.
+ * 
+ * @param player_id Index of the local controller (0 = Player 1, 1 = Player 2).
+ * @param button The target abstract InputButton mapping.
+ * @return true If the button continues to be depressed.
+ */
+bool isKeyHeld(int player_id, enum InputButton button);
 
-#ifdef __cplusplus
-}
-#endif
+/**
+ * @brief Retrieves the analog look/camera tracking axes for a given player.
+ * 
+ * @param player_id Index of the local controller (0 = Player 1, 1 = Player 2).
+ * @param out_x Pointer to receive horizontal delta movement.
+ * @param out_y Pointer to receive vertical delta movement.
+ */
+void input_get_look_axis(int player_id, float* out_x, float* out_y);
 
-#endif // INPUT_H
+#endif // PLATFORM_INPUT_H

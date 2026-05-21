@@ -9,96 +9,29 @@
 	(at your option) any later version.
 */
 
-#ifndef GAME_GAME_STATE_H
-#define GAME_GAME_STATE_H
+#include "game/game_state.h"
+#include <stdio.h>
+#include <stdlib.h>
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
+// Allocate the master global state struct instance declared as an extern in game_state.h
+struct GameState gstate;
 
-#include "world.h"
-#include "platform/gfx.h"
-#include "game/gui/screen.h"
-
-// Define foundational custom platform timing types matching your main loop variables
-typedef uint64_t ptime_t;
-
-/**
- * @brief Animation clock trackers for items and tools held by players.
- */
-struct AnimationTimer {
-	ptime_t start;
-};
-
-struct HeldItemAnimation {
-	struct AnimationTimer punch;
-	struct AnimationTimer switch_item;
-};
-
-/**
- * @brief State container for actively digging/breaking blocks.
- */
-struct DiggingState {
-	ptime_t cooldown;
-	bool active;
-};
-
-/**
- * @brief Dynamic engine performance profile statistics.
- */
-struct EngineStats {
-	float dt;
-	float fps;
-	float dt_gpu;
-	float dt_vsync;
-};
-
-/**
- * @brief User configuration properties populated via config.json.
- */
-struct UserConfig {
-	float fov;
-	float render_distance;
-	float fog_distance;
-};
-
-/**
- * @brief Global monolithic Game State Structure tracking engine runtime layers.
- */
-struct GameState {
-	bool quit;
-	bool world_loaded;
+void rand_gen_seed(uint64_t* seed_ptr) {
+	if (!seed_ptr) return;
 	
-	struct UserConfig config;
-	struct EngineStats stats;
-	struct HeldItemAnimation held_item_animation;
-	struct DiggingState digging;
-	
-	uint64_t rand_src;           // Seed tracker for pseudo-random noise generation
-	void* config_user;           // Handle for user configuration JSON files
-	
-	struct world world;          // Voxel chunk map data structure
-	uint64_t world_time;         // Raw ticks tracking total daytime progression
-	ptime_t world_time_start;    // Real-time anchor tracking loop elapsed moments
-	
-	struct entity* local_player; // Local tracking shortcut to Player 1 entity pointer
-	void* entities;              // Master manager list container for current active map entities
-	
-	struct screen* current_screen; // Active UI window or inventory menu overlay
-	void* windows[256];          // GUI pointer lookup table tracking active window frames
-};
+	// A basic linear congruential or splitmix64-style step to initialize pseudo-random fields
+	// Mix a starting system address anchor with a temporal numeric constant
+	*seed_ptr = 0x123456789ABCDEF0ULL ^ (uint64_t)((uintptr_t)seed_ptr);
+}
 
-// Expose the global state object instance referenced in main.c
-extern struct GameState gstate;
+void config_create(void** config_dest, const char* filepath) {
+	if (!config_dest || !filepath) return;
 
-/**
- * @brief Helper utility functions for custom seed randomization algorithms.
- */
-void rand_gen_seed(uint64_t* seed_ptr);
+	// In the future, this can hook into a JSON parser (like cJSON) to load from storage.
+	// For now, we print a verification trace and initialize an empty handle placeholder.
+#ifdef DEBUG
+	printf("[Engine] Loading user configuration profile from: %s\n", filepath);
+#endif
 
-/**
- * @brief Instantiates user configurations matching a named system file string path.
- */
-void config_create(void** config_dest, const char* filepath);
-
-#endif // GAME_GAME_STATE_H
+	*config_dest = NULL; 
+}
